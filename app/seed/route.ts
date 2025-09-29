@@ -1,14 +1,15 @@
 import bcrypt from 'bcrypt';
-import postgres from 'postgres';
+import { neon } from '@neondatabase/serverless';
 import { invoices, customers, revenue, users } from '../lib/placeholder-data';
 
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+const sql = connectionString ? neon(connectionString) : null as unknown as ReturnType<typeof neon>;
 
 async function seedUsers() {
-  await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
+  await sql`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`;
   await sql`
     CREATE TABLE IF NOT EXISTS users (
-      id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+      id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
       name VARCHAR(255) NOT NULL,
       email TEXT NOT NULL UNIQUE,
       password TEXT NOT NULL
@@ -30,11 +31,11 @@ async function seedUsers() {
 }
 
 async function seedInvoices() {
-  await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
+  await sql`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`;
 
   await sql`
     CREATE TABLE IF NOT EXISTS invoices (
-      id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+      id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
       customer_id UUID NOT NULL,
       amount INT NOT NULL,
       status VARCHAR(255) NOT NULL,
@@ -56,11 +57,11 @@ async function seedInvoices() {
 }
 
 async function seedCustomers() {
-  await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
+  await sql`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`;
 
   await sql`
     CREATE TABLE IF NOT EXISTS customers (
-      id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+      id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
       name VARCHAR(255) NOT NULL,
       email VARCHAR(255) NOT NULL,
       image_url VARCHAR(255) NOT NULL
@@ -102,16 +103,19 @@ async function seedRevenue() {
 }
 
 export async function GET() {
-  try {
-    const result = await sql.begin((sql) => [
-      seedUsers(),
-      seedCustomers(),
-      seedInvoices(),
-      seedRevenue(),
-    ]);
+  if (!connectionString) {
+    return Response.json({ error: 'POSTGRES_URL/DATABASE_URL is not configured' }, { status: 500 });
+  }
 
+  try {
+    // Ensure required extensions/tables are created as each step runs
+    await seedUsers();
+    await seedCustomers();
+    await seedInvoices();
+    await seedRevenue();
     return Response.json({ message: 'Database seeded successfully' });
   } catch (error) {
-    return Response.json({ error }, { status: 500 });
+    console.error('Seed Error:', error);
+    return Response.json({ error: 'Failed to seed database' }, { status: 500 });
   }
 }

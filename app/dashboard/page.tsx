@@ -1,4 +1,7 @@
+import { redirect } from 'next/navigation';
+
 export default function Page() {
-  return <p>Dashboard Page</p>;
+  redirect('/dashboard/overview');
 }
-// This is a placeholder page for the /dashboard route.
+
+
